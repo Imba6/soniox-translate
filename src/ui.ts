@@ -55,7 +55,16 @@ export function mountUi({ settings, onSave }: UiHandlers) {
             Stored only on this phone.</p>
         </div>
         <div class="field">
-          <label for="lang">Translate to</label>
+          <label for="mode">Translation mode</label>
+          <select id="mode">
+            <option value="one_way"${settings.translationMode === 'one_way' ? ' selected' : ''}>One Way · selected target</option>
+            <option value="two_way"${settings.translationMode === 'two_way' ? ' selected' : ''}>Two Way · French ↔ Ukrainian</option>
+            <option value="all_way"${settings.translationMode === 'all_way' ? ' selected' : ''}>All Way · any → Ukrainian, Ukrainian → French</option>
+          </select>
+          <p class="hint">All Way is experimental and uses two Soniox streams (higher API usage).</p>
+        </div>
+        <div class="field">
+          <label for="lang">Translate to (One Way)</label>
           <select id="lang">${langOptions}</select>
         </div>
         <div class="field">
@@ -131,6 +140,7 @@ export function mountUi({ settings, onSave }: UiHandlers) {
   const $ = <T extends HTMLElement>(sel: string) => app.querySelector<T>(sel)!
   const apiKeyEl = $<HTMLInputElement>('#apiKey')
   const langEl = $<HTMLSelectElement>('#lang')
+  const modeEl = $<HTMLSelectElement>('#mode')
   const notranslateEl = $<HTMLInputElement>('#notranslate')
   const alignEl = $<HTMLSelectElement>('#align')
   const valignEl = $<HTMLSelectElement>('#valign')
@@ -162,6 +172,7 @@ export function mountUi({ settings, onSave }: UiHandlers) {
     const next: AppSettings = {
       apiKey: apiKeyEl.value.trim(),
       targetLang: langEl.value,
+      translationMode: modeEl.value as AppSettings['translationMode'],
       showTranscript: showtxEl.checked,
       noTranslateLangs: parseCodes(notranslateEl.value),
       splitSentences: splitEl.checked,
