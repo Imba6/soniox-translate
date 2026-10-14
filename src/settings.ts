@@ -2,7 +2,11 @@
 // restarts; stored per-user in the Even companion app). Each user supplies
 // their OWN Soniox API key so they're billed for their own usage.
 
+export type TranslationMode = 'one_way' | 'two_way' | 'all_way'
+
 export interface AppSettings {
+  /** Translation mode: existing target, FR↔UK, or all languages→UK except UK→FR. */
+  translationMode: TranslationMode
   /** User's Soniox API key. Empty until they set it in the phone UI. */
   apiKey: string
   /** Translation target language code ('' = transcript only). */
@@ -30,6 +34,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   apiKey: '',
   targetLang: 'en',
+  translationMode: 'one_way',
   showTranscript: true,
   noTranslateLangs: [],
   splitSentences: true,
@@ -48,7 +53,7 @@ export function mergeSettings(raw: string | null | undefined): AppSettings {
   if (!raw) return { ...DEFAULT_SETTINGS }
   try {
     const parsed = JSON.parse(raw) as Partial<AppSettings>
-    return { ...DEFAULT_SETTINGS, ...parsed }
+    return { ...DEFAULT_SETTINGS, ...parsed, translationMode: ['one_way', 'two_way', 'all_way'].includes(parsed.translationMode ?? '') ? parsed.translationMode! : 'one_way' }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
