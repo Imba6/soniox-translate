@@ -197,7 +197,7 @@ function fitTail(text: string, placeholder: string, visibleLines: number, paneLi
 function recomputeDisplay() {
   if (hasTranscript) curTranscript = fitTail(rawTx, 'Listening…', transcriptLines, transcriptLines)
   const visible = settings.maxLines > 0 ? Math.min(translationLines, settings.maxLines) : translationLines
-  const primary = settings.targetLang ? rawTl : rawTx
+  const primary = settings.translationMode !== 'one_way' || settings.targetLang ? rawTl : rawTx
   curTranslation = fitTail(primary, settings.targetLang ? 'Translation…' : 'Listening…', visible, translationLines)
 }
 
@@ -251,6 +251,9 @@ function forceRender() {
 
 // ── STT lifecycle ────────────────────────────────────────────────────────────
 let stt: SttClient | null = null
+let secondaryStt: SttClient | null = null
+let allWayPrimary = ''
+let allWaySecondary = ''
 let micOn = false
 
 function onSnapshot({ transcriptFinal, transcriptInterim, translationFinal, translationInterim }: {
@@ -271,8 +274,12 @@ function onSttError(err: unknown) {
 
 function applySettings() {
   stt?.close()
+  secondaryStt?.close()
   stt = null
-  setTargetLangLabel(settings.targetLang)
+  secondaryStt = null
+  allWayPrimary = ''
+  allWaySecondary = ''
+  setTargetLangLabel(settings.translationMode === 'one_way' ? settings.targetLang : settings.translationMode === 'two_way' ? 'fr ↔ uk' : 'Auto → UK / UK → FR')
 
   if (!settings.apiKey) {
     if (micOn) {
@@ -290,12 +297,16 @@ function applySettings() {
     stt = startSttStream(
       {
         apiKey: settings.apiKey,
-        targetLang: settings.targetLang,
+        targetLang: settings.translationMode === 'one_way' ? settings.targetLang : 'uk',
+        translationMode: settings.translationMode === 'two_way' ? 'two_way' : 'one_way',
+        suppressMirroring: settings.translationMode === 'all_way',
         splitSentences: settings.splitSentences,
         speakerLabels: settings.speakerLabels,
         noTranslateLangs: settings.noTranslateLangs,
       },
-      onSnapshot,
+      settings.translationMode === 'all_way'
+        ? snap => { allWayPrimary = snap.translationFinal + snap.translationInterim; onSnapshot({ ...snap, translationFinal: [allWayPrimary, allWaySecondary].filter(Boolean).join('\n'), translationInterim: '' }) }
+        : onSnapshot,
       onSttError,
       status => {
         if (status === 'live') setStatus('listening', 'Microphone live · double-tap the temple to exit')
@@ -303,6 +314,20 @@ function applySettings() {
         else if (status === 'reconnecting') setStatus('reconnecting', 'Reconnecting…')
       },
     )
+    if (settings.translationMode === 'all_way') {
+      secondaryStt = startSttStream(
+        { apiKey: settings.apiKey, targetLang: 'fr', translationMode: 'one_way',
+          translateOnlySource: 'uk', suppressMirroring: true,
+          splitSentences: settings.splitSentences, speakerLabels: settings.speakerLabels },
+        snap => {
+          allWaySecondary = snap.translationFinal + snap.translationInterim
+          rawTl = [allWayPrimary, allWaySecondary].filter(Boolean).join('\n')
+          recomputeDisplay()
+          setTranslation(rawTl, '')
+          scheduleGlassesRender()
+        }, onSttError,
+      )
+    }
   } catch (err) {
     onSttError(err)
     return
@@ -325,6 +350,7 @@ async function handleSave(next: AppSettings) {
   const needRestart =
     next.apiKey !== prev.apiKey ||
     next.targetLang !== prev.targetLang ||
+    next.translationMode !== prev.translationMode ||
     next.splitSentences !== prev.splitSentences ||
     next.speakerLabels !== prev.speakerLabels ||
     next.noTranslateLangs.join(',') !== prev.noTranslateLangs.join(',')
@@ -333,7 +359,7 @@ async function handleSave(next: AppSettings) {
     rawTx = ''
     rawTl = ''
     curTranscript = 'Listening…'
-    curTranslation = next.targetLang ? 'Translation…' : 'Listening…'
+    curTranslation = next.translationMode !== 'one_way' || next.targetLang ? 'Translation…' : 'Listening…'
     if (needRebuild) await applyLayout()
     else forceRender()
     applySettings()
@@ -353,12 +379,13 @@ function cleanup() {
   cleanedUp = true
   serial('audioOff', () => bridge.audioControl(false))
   stt?.close()
+  secondaryStt?.close()
   unsubscribe()
 }
 
 const unsubscribe = bridge.onEvenHubEvent(event => {
   const pcm = event.audioEvent?.audioPcm
-  if (pcm) stt?.sendPcm(pcm)
+  if (pcm) { stt?.sendPcm(pcm); secondaryStt?.sendPcm(pcm) }
 
   const sysType = event.sysEvent?.eventType ?? null
   const textType = event.textEvent?.eventType ?? null
@@ -375,7 +402,9 @@ const unsubscribe = bridge.onEvenHubEvent(event => {
       micOn = false
     }
     stt?.close()
+    secondaryStt?.close()
     stt = null
+    secondaryStt = null
     return
   }
   if (sysType === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
