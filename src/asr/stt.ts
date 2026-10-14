@@ -30,6 +30,12 @@ export interface SttOptions {
   apiKey: string
   /** Translation target language code; '' = transcript only. */
   targetLang: string
+  /** Native Soniox translation mode. */
+  translationMode?: 'one_way' | 'two_way'
+  /** Optional source filter for translated tokens (used by All Way). */
+  translateOnlySource?: string
+  /** Suppress mirroring already-target-language speech into translation. */
+  suppressMirroring?: boolean
   /** Source language hints to improve accuracy; [] = auto-detect. */
   languageHints?: string[]
   /** Repurpose Soniox `<end>` pauses as line breaks. */
@@ -148,7 +154,9 @@ export function startSttStream(
     }
     if (languageHints.length) config.language_hints = languageHints
     if (targetLang) {
-      config.translation = { type: 'one_way', target_language: targetLang }
+      config.translation = opts.translationMode === 'two_way'
+        ? { type: 'two_way', language_a: 'fr', language_b: 'uk' }
+        : { type: 'one_way', target_language: targetLang }
       config.enable_language_identification = true
     }
     if (speakerLabels) config.enable_speaker_diarization = true
@@ -186,12 +194,13 @@ export function startSttStream(
       }
       if (isTranslation) {
         if (noTranslate.includes(t.source_language ?? '')) continue
+        if (opts.translateOnlySource && t.source_language !== opts.translateOnlySource) continue
         if (t.is_final) appendTranslation(text, t.speaker)
         else translationInterim += text
       } else {
         if (t.is_final) appendTranscript(text, t.speaker)
         else transcriptInterim += text
-        const keepAsIs = targetLang && (t.language === targetLang || noTranslate.includes(t.language ?? ''))
+        const keepAsIs = !opts.suppressMirroring && targetLang && (t.language === targetLang || noTranslate.includes(t.language ?? ''))
         if (keepAsIs) {
           if (t.is_final) appendTranslation(text, t.speaker)
           else translationInterim += text
