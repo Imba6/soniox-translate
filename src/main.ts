@@ -299,7 +299,7 @@ function applySettings() {
         apiKey: settings.apiKey,
         targetLang: settings.translationMode === 'one_way' ? settings.targetLang : 'uk',
         translationMode: settings.translationMode === 'two_way' ? 'two_way' : 'one_way',
-        suppressMirroring: settings.translationMode === 'all_way',
+        suppressMirroring: settings.translationMode !== 'one_way',
         splitSentences: settings.splitSentences,
         speakerLabels: settings.speakerLabels,
         noTranslateLangs: settings.noTranslateLangs,
